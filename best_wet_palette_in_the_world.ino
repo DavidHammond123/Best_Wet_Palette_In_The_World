@@ -32,11 +32,11 @@ public:
 
   void SendDataToPC()
   {
-    float pump_ratio = (float)m_pump_time_on_counter  / (float)m_seconds_since_last_send;
+    float pump_percentage = ((float)m_pump_time_on_counter  / (float)m_seconds_since_last_send) * 100.0;
     float average_moisture = (float)m_moisture_total / (float)m_seconds_since_last_send;
-    Serial.print(average_moisture, 2);
+    Serial.print(average_moisture, 1);
     Serial.print(",");
-    Serial.print(pump_ratio, 2);
+    Serial.print(pump_percentage, 1);
     Serial.print("\n");
   }
 
@@ -53,6 +53,9 @@ protected:
   uint32_t m_seconds_since_last_send;
 };
 
+
+
+
 class PumpController {
 public:
   PumpController()
@@ -64,13 +67,17 @@ public:
   void Setup()
   {
     pinMode(PUMP_CONTROL_PIN, OUTPUT);
+
+    //Turn on a pin to 3.3v so I can power the moisture sensor
+    pinMode(MOISTURE_SENSOR_POWER_PIN, OUTPUT);
+    digitalWrite(MOISTURE_SENSOR_POWER_PIN, HIGH);
   }
   
   void ControlLoop()
   {
     //Measure moisture level
     m_moisture_level = analogRead(MOISTURE_SENSOR_PIN);
-  
+
     //Is moisture level too low?
     if (m_moisture_level < MOISTURE_LOW_LIMIT) {
       m_pump_on = true;
@@ -80,7 +87,7 @@ public:
     if (m_moisture_level > MOISTURE_HIGH_LIMIT) {
       m_pump_on = false;
     }
-  
+    
     //Control the pump
     digitalWrite(PUMP_CONTROL_PIN, m_pump_on ? HIGH : LOW);
   }
@@ -103,6 +110,7 @@ protected:
 
   //Pin definitions
   const int MOISTURE_SENSOR_PIN = A0;
+  const int MOISTURE_SENSOR_POWER_PIN = 4;
   const int PUMP_CONTROL_PIN = 5;
 
 //Local variables
@@ -122,6 +130,7 @@ void setup() {
   // put your setup code here, to run once:
   g_recorder.Setup();
   g_pump_controller.Setup();
+  
 }
 
 void loop() {
@@ -135,13 +144,14 @@ void loop() {
   g_recorder.RecordOneSecondSnapshot(g_pump_controller.GetMoistureLevel(), g_pump_controller.GetPumpOn());
 
   //Check to see if 1 minute has passed
-  if (loop_counter >= ONE_MINUTE) {
+  //if (loop_counter >= ONE_MINUTE) {
+  if (true) {
     g_recorder.SendDataToPC();
     g_recorder.Reset();
     loop_counter = 0;
-  } else {
-    loop_counter++;
-  }
+  } 
+  
+  loop_counter++;
   
   //Wait 1 second
   delay(1000UL);
