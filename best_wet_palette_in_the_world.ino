@@ -1,6 +1,7 @@
 //------------------------------------------------------------
 //Static Definitions
-const static uint8_t ONE_MINUTE = 60;
+const static uint32_t ONE_MINUTE = 60000UL; //60,000ms = 60s
+const static uint32_t DELAY_MS = 250UL; //250ms
 
 //------------------------------------------------------------
 //Classes
@@ -17,40 +18,49 @@ public:
     Reset();
   }
 
-  void RecordOneSecondSnapshot(int moisture_level, bool pump_on)
+  void RecordSnapshot(int moisture_level_raw, int moisture_level_perc, bool pump_on)
   {
     //Sum up moisture for sending to computer later
-    m_moisture_total += moisture_level;
+    m_moisture_raw_total += moisture_level_raw;
+    m_moisture_perc_total += moisture_level_perc;
     
-    //Record if the pump is on for this second
+    //Record if the pump is on for this shapshot
     if (pump_on) {
       m_pump_time_on_counter++;
     }
 
-    m_seconds_since_last_send++;
+    m_snapshots_count++;
   }
 
   void SendDataToPC()
   {
-    float pump_percentage = ((float)m_pump_time_on_counter  / (float)m_seconds_since_last_send) * 100.0;
-    float average_moisture = (float)m_moisture_total / (float)m_seconds_since_last_send;
-    Serial.print(average_moisture, 1);
+    float pump_percentage = ((float)m_pump_time_on_counter  / (float)m_snapshots_count) * 100.0;
+    float average_moisture_raw = (float)m_moisture_raw_total / (float)m_snapshots_count;
+    float average_moisture_perc = (float)m_moisture_perc_total / (float)m_snapshots_count;
+    Serial.print(average_moisture_raw, 1);
+
+    Serial.print(",");
+    Serial.print(average_moisture_perc, 1);
     Serial.print(",");
     Serial.print(pump_percentage, 1);
+
     Serial.print("\n");
+    Reset();
   }
 
   void Reset()
   {
     m_pump_time_on_counter = 0;
-    m_moisture_total = 0;
-    m_seconds_since_last_send = 0;
+    m_moisture_raw_total = 0;
+    m_moisture_perc_total = 0;
+    m_snapshots_count = 0;
   }
   
 protected:
   uint8_t m_pump_time_on_counter;
-  uint32_t m_moisture_total;
-  uint32_t m_seconds_since_last_send;
+  uint32_t m_moisture_raw_total;
+  uint32_t m_moisture_perc_total;
+  uint32_t m_snapshots_count;
 };
 
 
@@ -61,40 +71,59 @@ public:
   PumpController()
   {
     m_pump_on = false;
-    m_moisture_level = 0;
+    m_moisture_level_raw = 0;
+    m_moisture_level_perc = 0;
   }
 
   void Setup()
   {
-    pinMode(PUMP_CONTROL_PIN, OUTPUT);
+    //Turn on a pin to 3.3v so I can power the Relay control
+    pinMode(PUMP_RELAY_POWER_PIN, OUTPUT);
+    digitalWrite(PUMP_RELAY_POWER_PIN, HIGH);
 
+    //Turn on the pump control, control pin and set it to low
+    pinMode(PUMP_RELAY_CONTROL_PIN, OUTPUT);
+    digitalWrite(PUMP_RELAY_CONTROL_PIN, LOW);
+
+    //Turn on a pin to GND to ground the moisture sensor
+    pinMode(MOISTURE_SENSOR_GROUND_PIN, OUTPUT);
+    digitalWrite(MOISTURE_SENSOR_GROUND_PIN, LOW);
+  
     //Turn on a pin to 3.3v so I can power the moisture sensor
     pinMode(MOISTURE_SENSOR_POWER_PIN, OUTPUT);
     digitalWrite(MOISTURE_SENSOR_POWER_PIN, HIGH);
+    
   }
   
   void ControlLoop()
   {
     //Measure moisture level
-    m_moisture_level = analogRead(MOISTURE_SENSOR_PIN);
+    m_moisture_level_raw = analogRead(MOISTURE_SENSOR_SENSE_PIN);
 
+    m_moisture_level_perc = map(m_moisture_level_raw, COMPLETELY_DRY, COMPLETELY_WET, 0, 100);
+    
     //Is moisture level too low?
-    if (m_moisture_level < MOISTURE_LOW_LIMIT) {
+    if (m_moisture_level_perc < MOISTURE_LOW_LIMIT) {
       m_pump_on = true;
     }
   
     //Is moisture level too high?
-    if (m_moisture_level > MOISTURE_HIGH_LIMIT) {
+    if (m_moisture_level_perc > MOISTURE_HIGH_LIMIT) {
       m_pump_on = false;
     }
     
     //Control the pump
-    digitalWrite(PUMP_CONTROL_PIN, m_pump_on ? HIGH : LOW);
+    digitalWrite(PUMP_RELAY_CONTROL_PIN, m_pump_on ? HIGH : LOW);
   }
 
-  int GetMoistureLevel() const
+  int GetMoistureLevelRaw() const
   {
-    return m_moisture_level;
+    return m_moisture_level_raw;
+  }
+
+  int GetMoistureLevelPerc() const
+  {
+    return m_moisture_level_perc;
   }
 
   bool GetPumpOn() const
@@ -104,19 +133,27 @@ public:
 
 //statics
 protected:
-  //Moisture limits
-  const int MOISTURE_LOW_LIMIT = 500;
-  const int MOISTURE_HIGH_LIMIT = 1000;
+  //Sensor readings when completely dry/wet
+  const static uint16_t COMPLETELY_DRY = 600; //Moisture sensor reading 600 when completely dry
+  const static uint16_t COMPLETELY_WET = 244; //Moisture sensor reading 244 when completely wet
+
+  //Moisture limits on the sensor to trigger pump relay
+  const int MOISTURE_LOW_LIMIT = 50; //50%
+  const int MOISTURE_HIGH_LIMIT = 90; //90%
 
   //Pin definitions
-  const int MOISTURE_SENSOR_PIN = A0;
-  const int MOISTURE_SENSOR_POWER_PIN = 4;
-  const int PUMP_CONTROL_PIN = 5;
+  const int MOISTURE_SENSOR_SENSE_PIN = A0;
+  const int MOISTURE_SENSOR_POWER_PIN = 10;
+  const int MOISTURE_SENSOR_GROUND_PIN = 9;
+
+  const int PUMP_RELAY_POWER_PIN = 2;
+  const int PUMP_RELAY_CONTROL_PIN = 3;
 
 //Local variables
 protected:
   bool m_pump_on;
-  int m_moisture_level;
+  int m_moisture_level_raw;
+  int m_moisture_level_perc;
 };
 
 
@@ -135,24 +172,23 @@ void setup() {
 
 void loop() {
   // put your main code here, to run repeatedly:
-  static uint8_t loop_counter = 0;
+  static uint32_t time_since_last_data_send = 0;
 
   //Run the pump controller
   g_pump_controller.ControlLoop();
 
   //Record snapshot of data
-  g_recorder.RecordOneSecondSnapshot(g_pump_controller.GetMoistureLevel(), g_pump_controller.GetPumpOn());
+  g_recorder.RecordSnapshot(g_pump_controller.GetMoistureLevelRaw(), g_pump_controller.GetMoistureLevelPerc(), g_pump_controller.GetPumpOn());
 
   //Check to see if 1 minute has passed
-  //if (loop_counter >= ONE_MINUTE) {
+  //if (time_since_last_data_send >= ONE_MINUTE) {
   if (true) {
     g_recorder.SendDataToPC();
-    g_recorder.Reset();
-    loop_counter = 0;
+    time_since_last_data_send = 0;
   } 
   
-  loop_counter++;
+  time_since_last_data_send += DELAY_MS;
   
-  //Wait 1 second
-  delay(1000UL);
+  //Wait DELAY_MS milliseconds
+  delay(DELAY_MS);
 }
