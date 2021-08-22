@@ -37,11 +37,12 @@ public:
     float pump_percentage = ((float)m_pump_time_on_counter  / (float)m_snapshots_count) * 100.0;
     float average_moisture_raw = (float)m_moisture_raw_total / (float)m_snapshots_count;
     float average_moisture_perc = (float)m_moisture_perc_total / (float)m_snapshots_count;
-    Serial.print(average_moisture_raw, 1);
-
-    Serial.print(",");
+    //Serial.print(average_moisture_raw, 1);
+    //Serial.print(",");
+    
     Serial.print(average_moisture_perc, 1);
     Serial.print(",");
+    
     Serial.print(pump_percentage, 1);
 
     Serial.print("\n");
@@ -77,22 +78,9 @@ public:
 
   void Setup()
   {
-    //Turn on a pin to 3.3v so I can power the Relay control
-    pinMode(PUMP_RELAY_POWER_PIN, OUTPUT);
-    digitalWrite(PUMP_RELAY_POWER_PIN, HIGH);
-
     //Turn on the pump control, control pin and set it to low
     pinMode(PUMP_RELAY_CONTROL_PIN, OUTPUT);
-    digitalWrite(PUMP_RELAY_CONTROL_PIN, LOW);
-
-    //Turn on a pin to GND to ground the moisture sensor
-    pinMode(MOISTURE_SENSOR_GROUND_PIN, OUTPUT);
-    digitalWrite(MOISTURE_SENSOR_GROUND_PIN, LOW);
-  
-    //Turn on a pin to 3.3v so I can power the moisture sensor
-    pinMode(MOISTURE_SENSOR_POWER_PIN, OUTPUT);
-    digitalWrite(MOISTURE_SENSOR_POWER_PIN, HIGH);
-    
+    digitalWrite(PUMP_RELAY_CONTROL_PIN, LOW); 
   }
   
   void ControlLoop()
@@ -113,7 +101,7 @@ public:
     }
     
     //Control the pump
-    digitalWrite(PUMP_RELAY_CONTROL_PIN, m_pump_on ? HIGH : LOW);
+    digitalWrite(PUMP_RELAY_CONTROL_PIN, m_pump_on ? LOW : HIGH);
   }
 
   int GetMoistureLevelRaw() const
@@ -134,19 +122,15 @@ public:
 //statics
 protected:
   //Sensor readings when completely dry/wet
-  const static uint16_t COMPLETELY_DRY = 600; //Moisture sensor reading 600 when completely dry
-  const static uint16_t COMPLETELY_WET = 244; //Moisture sensor reading 244 when completely wet
+  const static uint16_t COMPLETELY_DRY = 750; //Moisture sensor reading 590 when completely dry
+  const static uint16_t COMPLETELY_WET = 500; //Moisture sensor reading 400 when completely wet
 
   //Moisture limits on the sensor to trigger pump relay
-  const int MOISTURE_LOW_LIMIT = 50; //50%
-  const int MOISTURE_HIGH_LIMIT = 90; //90%
+  const int MOISTURE_LOW_LIMIT = 40; //40%
+  const int MOISTURE_HIGH_LIMIT = 80; //80%
 
   //Pin definitions
   const int MOISTURE_SENSOR_SENSE_PIN = A0;
-  const int MOISTURE_SENSOR_POWER_PIN = 10;
-  const int MOISTURE_SENSOR_GROUND_PIN = 9;
-
-  const int PUMP_RELAY_POWER_PIN = 2;
   const int PUMP_RELAY_CONTROL_PIN = 3;
 
 //Local variables
