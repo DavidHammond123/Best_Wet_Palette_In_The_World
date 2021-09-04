@@ -1,6 +1,6 @@
 //------------------------------------------------------------
 //Static Definitions
-const static uint32_t ONE_MINUTE = 60000UL; //60,000ms = 60s
+const static int32_t ONE_MINUTE = 60000L; //60,000ms = 60s
 const static uint32_t DELAY_MS = 250UL; //250ms
 
 
@@ -42,6 +42,10 @@ class Recorder {
       float pump_on_perc = ((float)m_pump_on_counter  / (float)m_snapshots_count) * 100.0;
       float average_moisture_raw = (float)m_moisture_raw_total / (float)m_snapshots_count;
       float average_moisture_perc = (float)m_moisture_perc_total / (float)m_snapshots_count;
+      
+      Serial.print(millis());
+      Serial.print(",");
+      
       Serial.print(average_moisture_raw, 1);
       Serial.print(",");
       
@@ -49,7 +53,6 @@ class Recorder {
       Serial.print(",");
       
       Serial.print(pump_on_perc, 1);
-  
       Serial.print("\n");
       Reset();
     }
@@ -184,9 +187,9 @@ void loop() {
   g_recorder.RecordSnapshot(g_pump_controller.GetMoistureLevelRaw(), g_pump_controller.GetMoistureLevelPerc(), g_pump_controller.GetPumpOn());
 
   //Check to see if 1 minute has passed
-  if ((millis() - last_send_time) >= ONE_MINUTE) {
-    g_recorder.SendDataToPC();
+  if (abs((int64_t)millis() - (int64_t)last_send_time - ONE_MINUTE) < (DELAY_MS/2)) {
     last_send_time = millis();
+    g_recorder.SendDataToPC();
   }
   
   //Wait DELAY_MS milliseconds
